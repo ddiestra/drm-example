@@ -1,0 +1,191 @@
+<html>
+  <head>
+    <title>DRM Example</title>
+    <link href="https://cdn.jsdelivr.net/npm/video.js@7.15.4/dist/video-js.min.css" rel="stylesheet"/>
+  </head>
+  <video id="video" class="video-js"></video>
+  <script src="https://cdn.jsdelivr.net/npm/axios@1.6.7/dist/axios.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/video.js@7.15.4/dist/video.min.js"></script>
+  <script src="/videojs-dash.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dashjs@4.7.4/dist/dash.all.min.js"></script>
+  <script>
+    window.dash = dashjs;
+    const id = 'adstPZWVgQXodzX5';
+    const anvack = '8v9BEynYxBeOqcLKaDINNCGEoB84XKlR';
+    const anvatoApiURL = `https://tkx.mp.lura.live/rest/v2/mcp/video/${id}?anvack=${anvack}`;
+    const RE_JSON = /\([{[].*[}\]]\)$/;
+    const elem = document.getElementById('video');
+    const extractJSON = (jsonpString) => JSON.parse(jsonpString.substring(jsonpString.search(RE_JSON) + 1, jsonpString.length - 1));
+    const isMobile = () => window.matchMedia('(max-width: 600px)').matches;
+    const processAnvatoSources = async urls => {
+      if (urls.length === 0) {
+        return {
+          videoUrl: null,
+          cert: null,
+          licenseURL: null,
+          DRM: false,
+        };
+      }
+
+      const isDRM = urls.some(url => !!url.license_url);
+
+      if (!isDRM) {
+        return {
+          videoUrl: urls[0].embed_url,
+          cert: null,
+          licenseURL: null,
+          DRM: false,
+        };
+      }
+
+      const dashSource = urls.find(url => url.format === 'dash');
+      const m3u8Source = urls.find(url => url.format === 'm3u8-variant');
+      const supportsFairPlay = m3u8Source ? await supportsDRM('com.apple.fps.1_0') : false;
+      const supportsWidevine = dashSource ? await supportsDRM('com.widevine.alpha') : false;
+
+      // Doesn't support DRM.
+      if (!supportsWidevine && !supportsFairPlay) {
+
+        console.log({ type: 'DRM Unsupported' });
+
+        return {
+          videoUrl: null,
+          cert: null,
+          licenseURL: null,
+          DRM: false,
+        };
+      }
+
+      if (m3u8Source && supportsFairPlay) {
+        console.log({ type: 'DRM Support Fairplay', licenseURL: m3u8Source.license_url });
+
+        return {
+          videoUrl:  m3u8Source.embed_url,
+          cert: m3u8Source.fp_cert?.payload,
+          licenseURL: m3u8Source.license_url,
+          DRM: 'fairplay',
+        };
+      }
+
+      if (dashSource && supportsWidevine) {
+        // Initial akta response contains a redirect to the actual video
+        console.log({ type: 'DRM Support Widevine', licenseURL: dashSource.license_url});
+
+        return {
+          videoUrl:  dashSource.embed_url,
+          cert: null,
+          licenseURL: dashSource.license_url,
+          DRM: 'widevine',
+        };
+      }
+    };
+
+
+    const supportsDRM = async (type) => {
+      try {
+        await navigator.requestMediaKeySystemAccess(type, [
+          {
+            initDataTypes: ["keyids", "mp4", "cenc", "webm"],
+            audioCapabilities: [{ contentType: 'audio/mp4;codecs="mp4a.40.2"' }],
+            videoCapabilities: [{ contentType: 'video/mp4;codecs="avc1.64001e"' }],
+          },
+        ]);
+
+        return true;
+      } catch (error) {
+        return false;
+      }
+    };
+
+    const getData = async () => {
+      const { data } = await axios({ url: anvatoApiURL, timeout: 5000 });
+      const {
+        upload_id: id,
+        def_title: title,
+        src_image_url: poster,
+        published_urls: publishedUrls,
+      } = extractJSON(data);
+
+      const source = await processAnvatoSources(publishedUrls);
+      const { videoUrl, licenseURL, DRM, cert } = source;
+
+      return {
+        id,
+        title,
+        poster,
+        videoUrl,
+        licenseURL,
+        DRM,
+      }
+    };
+
+    
+
+
+    const setup = async () => {
+      const {
+        upload_id: id,
+        def_title: title,
+        poster,
+        published_urls: publishedUrls,
+        licenseURL,
+        videoUrl: url,
+      } = await getData();
+
+
+
+      const player = videojs(elem,
+        {
+          id: 'player-1',
+          aspectRatio: '16:9',
+          fill: true,
+          responsive: true,
+          controls: true,
+          muted: true,
+          preload: 'auto',
+          autoplay: false,
+          html5: {
+            vhs: {
+              // For more detail about overrideNative
+              // https://github.com/videojs/http-streaming#overridenative
+              overrideNative: !videojs.browser.IS_SAFARI,
+            },
+            nativeAudioTracks: false,
+            nativeVideoTracks: false,
+          },
+          useCueTags: true,
+          liveui: true,
+          controlBar: {
+            playToggle: true,
+            volumePanel: true,
+            progressControl: true,
+            currentTimeDisplay: true,
+            timeDivider: true,
+            remainingTimeDisplay: false,
+            fullscreenToggle: true,
+            pictureInPictureToggle: false,
+          },
+          title,
+        }
+      );
+
+      player.poster(poster);
+      player.src(
+        {
+          src: url,
+          type: 'application/dash+xml',
+          keySystemOptions: [
+            {
+              name: 'com.widevine.alpha',
+              options: {
+                serverURL: licenseURL,
+              },
+            },
+          ],
+        },
+      );
+    };
+
+    setup();
+  </script>
+</html>
