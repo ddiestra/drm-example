@@ -111,8 +111,8 @@
         await navigator.requestMediaKeySystemAccess(type, [
           {
             initDataTypes: ["keyids", "mp4", "cenc", "webm"],
-            audioCapabilities: [{ contentType: 'audio/mp4;codecs="mp4a.40.2"' }],
-            videoCapabilities: [{ contentType: 'video/mp4;codecs="avc1.64001e"' }],
+            audioCapabilities: [{ contentType: 'audio/mp4;codecs="mp4a.40.2"', robustness: 'SW_SECURE_CRYPTO', }],
+            videoCapabilities: [{ contentType: 'video/mp4;codecs="avc1.64001e"', robustness: 'SW_SECURE_CRYPTO', }],
           },
         ]);
 
