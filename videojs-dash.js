@@ -69604,6 +69604,7 @@
 	    // - mediaKeyMessageError (only fires under 'might not work' circumstances)
 
 	    this.retriggerError_ = function (event) {
+				console.log(event);
 	      if (event.error === 'capability' && event.event === 'mediasource') {
 	        // No support for MSE
 	        _this.player.error({
@@ -69709,9 +69710,6 @@
 	    this.mediaPlayer_.on(dashjs$1.MediaPlayer.events.ERROR, this.retriggerError_);
 
 	    this.getDuration_ = function (event) {
-
-        console.log(event.data);
-
 	      var periods = event.data.Period_asArray;
 	      var oldHasFiniteDuration = _this.hasFiniteDuration_;
 
