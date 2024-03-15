@@ -3,13 +3,12 @@
     <title>DRM Example</title>
     <link href="https://cdn.jsdelivr.net/npm/video.js@7.15.4/dist/video-js.min.css" rel="stylesheet"/>
   </head>
-  <video id="video" class="video-js"></video>
+  <video id="video" class="video-js"></video>  
   <script src="https://cdn.jsdelivr.net/npm/axios@1.6.7/dist/axios.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/video.js@7.15.4/dist/video.min.js"></script>
-  <script src="/drm-example/videojs-dash.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/dashjs@4.7.4/dist/dash.all.min.js"></script>
+  <script src="/drm-example/videojs-dash2.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dashjs@3.1.0/dist/dash.all.min.js"></script>
   <script>
-    window.dash = dashjs;
     const id = 'adstPZWVgQXodzX5';
     const anvack = '8v9BEynYxBeOqcLKaDINNCGEoB84XKlR';
     const anvatoApiURL = `https://tkx.mp.lura.live/rest/v2/mcp/video/${id}?anvack=${anvack}`;
@@ -69,14 +68,40 @@
 
       if (dashSource && supportsWidevine) {
         // Initial akta response contains a redirect to the actual video
-        console.log({ type: 'DRM Support Widevine', licenseURL: dashSource.license_url});
+        videoUrl = dashSource.embed_url;
 
-        return {
-          videoUrl:  dashSource.embed_url,
-          cert: null,
-          licenseURL: dashSource.license_url,
-          DRM: 'widevine',
-        };
+        try {
+          const response = await axios({
+            url: videoUrl,
+            timeout: 5000,
+          });
+
+          const { data } = response;
+          const parser = new DOMParser();
+          const xmlDoc = parser.parseFromString(data, "application/xml");
+          const locationElement = xmlDoc.getElementsByTagName("Location");
+          if (locationElement.length > 0) {
+            videoUrl = locationElement[0].textContent;
+          }
+
+          console.log({ type: 'DRM Support Widevine', licenseURL: dashSource.license_url});
+
+          return {
+            videoUrl,
+            cert: null,
+            licenseURL: dashSource.license_url,
+            DRM: 'widevine',
+          };
+
+        } catch (error) {
+          console.log({ type: 'DRMError', error });
+          return {
+            videoUrl: null,
+            cert: null,
+            licenseURL: null,
+            DRM: false,
+          };
+        }
       }
     };
 
@@ -86,8 +111,8 @@
         await navigator.requestMediaKeySystemAccess(type, [
           {
             initDataTypes: ["keyids", "mp4", "cenc", "webm"],
-            audioCapabilities: [{ contentType: 'audio/mp4;codecs="mp4a.40.2"' }],
-            videoCapabilities: [{ contentType: 'video/mp4;codecs="avc1.64001e"' }],
+            audioCapabilities: [{ contentType: 'audio/mp4;codecs="mp4a.40.2"', robustness: 'SW_SECURE_CRYPTO', }],
+            videoCapabilities: [{ contentType: 'video/mp4;codecs="avc1.64001e"', robustness: 'SW_SECURE_CRYPTO', }],
           },
         ]);
 
@@ -119,9 +144,6 @@
       }
     };
 
-    
-
-
     const setup = async () => {
       const {
         upload_id: id,
@@ -148,7 +170,7 @@
             vhs: {
               // For more detail about overrideNative
               // https://github.com/videojs/http-streaming#overridenative
-              overrideNative: !videojs.browser.IS_SAFARI,
+              overrideNative: !videojs.browser.IS_SAFARI && !videojs.browser.IS_EDGE,
             },
             nativeAudioTracks: false,
             nativeVideoTracks: false,
@@ -170,7 +192,7 @@
       );
 
       player.poster(poster);
-      player.src(
+      player.src([
         {
           src: url,
           type: 'application/dash+xml',
@@ -182,8 +204,8 @@
               },
             },
           ],
-        },
-      );
+        }
+      ]);
     };
 
     setup();
